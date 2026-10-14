@@ -1,4 +1,6 @@
 from pathlib import Path
+import random
+import statistics
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -9,7 +11,7 @@ from app.environment import LiveCommerceEnvironment
 
 app = FastAPI(title="Edith-sama — Live Commerce AI Agent",
               description="Local live-commerce simulation using tabular Q-Learning.",
-              version="0.1.0")
+              version="0.2.0")
 agent = QLearningAgent()
 agent.load()
 environment = LiveCommerceEnvironment()
@@ -23,6 +25,49 @@ class TrainRequest(BaseModel):
 
 class StepRequest(BaseModel):
     action: str | None = None
+
+
+class EvaluationRequest(BaseModel):
+    episodes: int = Field(default=500, ge=10, le=5000)
+    seed: int = Field(default=2026, ge=0, le=2_147_483_647)
+
+
+def evaluate_policy(policy: str, episodes: int, seed: int):
+    """Evaluate a policy on the same deterministic sequence of episode seeds."""
+    rewards, revenues, sales, turns = [], [], [], []
+    for episode in range(episodes):
+        episode_seed = seed + episode
+        env = LiveCommerceEnvironment(seed=episode_seed)
+        rng = random.Random(episode_seed + 9_999_991)
+        total_reward = 0
+        while True:
+            state_key = env.state_key()
+            if policy == "trained":
+                action = agent.choose_action(state_key, training=False)
+            elif policy == "random":
+                action = rng.choice(env.ACTIONS)
+            else:
+                # Fixed baseline: explain the product every turn, no discount.
+                action = "JELASKAN_PRODUK"
+            result = env.step(action)
+            total_reward += result["reward"]
+            if result["done"]:
+                break
+        rewards.append(total_reward)
+        revenues.append(env.revenue)
+        sales.append(env.sales)
+        turns.append(env.turn)
+
+    return {
+        "policy": policy,
+        "episodes": episodes,
+        "average_reward": round(statistics.mean(rewards), 2),
+        "average_revenue": round(statistics.mean(revenues), 2),
+        "average_sales": round(statistics.mean(sales), 2),
+        "average_turns": round(statistics.mean(turns), 2),
+        "reward_stddev": round(statistics.pstdev(rewards), 2),
+        "rewards": rewards,
+    }
 
 
 @app.get("/", include_in_schema=False)
@@ -48,6 +93,38 @@ def train_model(request: TrainRequest):
     }
 
 
+@app.post("/evaluate")
+def evaluate_model(request: EvaluationRequest):
+    if not agent.q_table:
+        raise HTTPException(status_code=400, detail="Model belum dilatih. Jalankan POST /train terlebih dahulu.")
+    episodes, seed = request.episodes, request.seed
+    trained = evaluate_policy("trained", episodes, seed)
+    random_policy = evaluate_policy("random", episodes, seed)
+    fixed = evaluate_policy("fixed", episodes, seed)
+
+    def summary(result):
+        return {k: v for k, v in result.items() if k != "rewards"}
+
+    baseline_reward = random_policy["average_reward"]
+    reward_delta = trained["average_reward"] - baseline_reward
+    reward_pct = round((reward_delta / abs(baseline_reward)) * 100, 2) if baseline_reward else None
+    return {
+        "episodes": episodes,
+        "seed": seed,
+        "note": "Evaluasi pada lingkungan sintetis. Ketiga kebijakan memakai seed episode yang sama; hasil bukan bukti performa pada transaksi nyata.",
+        "trained_agent": summary(trained),
+        "random_baseline": summary(random_policy),
+        "fixed_baseline": summary(fixed),
+        "comparison_vs_random": {
+            "average_reward_difference": round(reward_delta, 2),
+            "average_reward_percent": reward_pct,
+            "average_revenue_difference": round(trained["average_revenue"] - random_policy["average_revenue"], 2),
+            "average_sales_difference": round(trained["average_sales"] - random_policy["average_sales"], 2),
+            "reward_better_than_random": trained["average_reward"] > random_policy["average_reward"],
+        },
+    }
+
+
 @app.post("/session/start")
 def start_session():
     global session_active
@@ -69,6 +146,8 @@ def session_step(request: StepRequest | None = None):
         raise HTTPException(status_code=400, detail="Aksi tidak valid.")
     action = manual_action or agent.choose_action(environment.state_key(), training=False)
     result = environment.step(action)
+    if result["done"]:
+        session_active = False
     return {**result, "session": {"turn": environment.turn, "max_turns": 100,
                                   "finished": result["done"]}}
 
