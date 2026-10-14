@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.agent import QLearningAgent
@@ -11,6 +14,7 @@ agent = QLearningAgent()
 agent.load()
 environment = LiveCommerceEnvironment()
 session_active = False
+DASHBOARD_PATH = Path(__file__).parent / "static" / "index.html"
 
 
 class TrainRequest(BaseModel):
@@ -21,9 +25,9 @@ class StepRequest(BaseModel):
     action: str | None = None
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def root():
-    return {"app": "Edith-sama — Live Commerce AI Agent", "status": "running", "docs": "/docs"}
+    return FileResponse(DASHBOARD_PATH)
 
 
 @app.get("/health")
