@@ -38,7 +38,12 @@ class QLearningAgent:
         target = reward + self.gamma * future
         self.q_table[state_key][action] = current + self.alpha * (target - current)
 
-    def train(self, episodes=10_000, seed=42):
+    def train(self, episodes=10_000, seed=42, reset_model=True):
+        # Reward semantics changed to prioritize revenue. Do not mix old Q-values
+        # with the new reward scale when starting a fresh training run.
+        if reset_model:
+            self.q_table = {}
+            self.epsilon = 1.0
         env = LiveCommerceEnvironment(seed=seed)
         history = []
         for episode in range(episodes):
