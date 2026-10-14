@@ -11,7 +11,7 @@ from app.environment import LiveCommerceEnvironment
 
 app = FastAPI(title="Edith-sama — Live Commerce AI Agent",
               description="Local live-commerce simulation using tabular Q-Learning.",
-              version="0.2.0")
+              version="0.3.0")
 agent = QLearningAgent()
 agent.load()
 environment = LiveCommerceEnvironment()
@@ -33,8 +33,12 @@ class EvaluationRequest(BaseModel):
 
 
 def evaluate_policy(policy: str, episodes: int, seed: int):
-    """Evaluate a policy on the same deterministic sequence of episode seeds."""
+    """Evaluate a policy and collect outcomes grouped by chosen action."""
     rewards, revenues, sales, turns, discounts = [], [], [], [], []
+    action_stats = {
+        action: {"selections": 0, "sales": 0, "revenue": 0, "discounts": 0}
+        for action in LiveCommerceEnvironment.ACTIONS
+    }
     for episode in range(episodes):
         episode_seed = seed + episode
         env = LiveCommerceEnvironment(seed=episode_seed)
@@ -43,8 +47,7 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         while True:
             state_key = env.state_key()
             if policy == "trained":
-                # Evaluation must be reproducible: do not use the agent's random
-                # tie-breaker or mutate its Q-table for unseen states.
+                # Deterministic tie-breaking keeps policy evaluation reproducible.
                 values = agent.q_table.get(state_key)
                 if values:
                     best_value = max(values.values())
@@ -54,10 +57,18 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
             elif policy == "random":
                 action = rng.choice(env.ACTIONS)
             else:
-                # Fixed baseline: explain the product every turn, no discount.
                 action = "JELASKAN_PRODUK"
+
             result = env.step(action)
             total_reward += result["reward"]
+            info = result["info"]
+            metrics = action_stats[action]
+            metrics["selections"] += 1
+            if info["sold"]:
+                metrics["sales"] += 1
+                metrics["revenue"] += int(info["revenue"]) - int(info["revenue"] - int(env.price * (1 - info["discount"]))) if False else int(env.price * (1 - info["discount"]))
+            if info["discount"]:
+                metrics["discounts"] += 1
             if result["done"]:
                 break
         rewards.append(total_reward)
@@ -65,6 +76,10 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         sales.append(env.sales)
         turns.append(env.turn)
         discounts.append(env.discount_count)
+
+    for metrics in action_stats.values():
+        metrics["conversion_rate_percent"] = round(metrics["sales"] / metrics["selections"] * 100, 2) if metrics["selections"] else 0
+        metrics["average_revenue_per_selection"] = round(metrics["revenue"] / metrics["selections"], 2) if metrics["selections"] else 0
 
     return {
         "policy": policy,
@@ -76,6 +91,7 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         "average_discounts": round(statistics.mean(discounts), 2),
         "sell_through_rate": round(statistics.mean(sales) / 20 * 100, 2),
         "reward_stddev": round(statistics.pstdev(rewards), 2),
+        "action_stats": action_stats,
         "rewards": rewards,
     }
 
