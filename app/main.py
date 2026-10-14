@@ -11,7 +11,7 @@ from app.environment import LiveCommerceEnvironment
 
 app = FastAPI(title="Edith-sama — Live Commerce AI Agent",
               description="Local live-commerce simulation using tabular Q-Learning.",
-              version="0.3.2")
+              version="0.4.0")
 agent = QLearningAgent()
 agent.load()
 environment = LiveCommerceEnvironment()
@@ -33,11 +33,11 @@ class EvaluationRequest(BaseModel):
 
 
 def evaluate_policy(policy: str, episodes: int, seed: int):
-    """Evaluate a policy and collect outcomes grouped by chosen action."""
-    rewards, revenues, sales, turns, discounts = [], [], [], [], []
+    """Evaluate a policy and collect revenue and gross-profit metrics."""
+    rewards, revenues, gross_profits, sales, turns, discounts = [], [], [], [], [], []
     discount_costs, full_price_values = [], []
     action_stats = {
-        action: {"selections": 0, "sales": 0, "revenue": 0,
+        action: {"selections": 0, "sales": 0, "revenue": 0, "gross_profit": 0,
                  "discounts": 0, "realized_discount_cost": 0, "full_price_sales_value": 0}
         for action in LiveCommerceEnvironment.ACTIONS
     }
@@ -63,6 +63,7 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
                 action = "JELASKAN_PRODUK"
 
             previous_revenue = env.revenue
+            previous_profit = env.gross_profit
             result = env.step(action)
             total_reward += result["reward"]
             info = result["info"]
@@ -70,9 +71,11 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
             metrics["selections"] += 1
             if info["sold"]:
                 transaction_revenue = env.revenue - previous_revenue
+                transaction_profit = env.gross_profit - previous_profit
                 discount_cost = env.price - transaction_revenue
                 metrics["sales"] += 1
                 metrics["revenue"] += transaction_revenue
+                metrics["gross_profit"] += transaction_profit
                 metrics["full_price_sales_value"] += env.price
                 metrics["realized_discount_cost"] += discount_cost
                 episode_full_price_value += env.price
@@ -83,6 +86,7 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
                 break
         rewards.append(total_reward)
         revenues.append(env.revenue)
+        gross_profits.append(env.gross_profit)
         sales.append(env.sales)
         turns.append(env.turn)
         discounts.append(env.discount_count)
@@ -92,8 +96,10 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
     for metrics in action_stats.values():
         metrics["conversion_rate_percent"] = round(metrics["sales"] / metrics["selections"] * 100, 2) if metrics["selections"] else 0
         metrics["average_revenue_per_selection"] = round(metrics["revenue"] / metrics["selections"], 2) if metrics["selections"] else 0
+        metrics["average_gross_profit_per_selection"] = round(metrics["gross_profit"] / metrics["selections"], 2) if metrics["selections"] else 0
 
     average_revenue = statistics.mean(revenues)
+    average_gross_profit = statistics.mean(gross_profits)
     average_discount_cost = statistics.mean(discount_costs)
     average_full_price_value = statistics.mean(full_price_values)
     return {
@@ -101,6 +107,7 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         "episodes": episodes,
         "average_reward": round(statistics.mean(rewards), 2),
         "average_revenue": round(average_revenue, 2),
+        "average_gross_profit": round(average_gross_profit, 2),
         "average_sales": round(statistics.mean(sales), 2),
         "average_turns": round(statistics.mean(turns), 2),
         "average_discounts": round(statistics.mean(discounts), 2),
@@ -130,10 +137,14 @@ def train_model(request: TrainRequest):
     agent.save()
     recent = history[-min(100, len(history)):]
     return {
-        "message": "Training selesai", "episodes": len(history),
-        "q_states": len(agent.q_table), "epsilon": round(agent.epsilon, 4),
+        "message": "Training selesai dengan reward laba kotor.",
+        "episodes": len(history),
+        "q_states": len(agent.q_table),
+        "epsilon": round(agent.epsilon, 4),
         "last_100_average_reward": round(sum(x["reward"] for x in recent) / len(recent), 2),
         "model_path": "models/q_table.json",
+        "reward_objective": "gross_profit",
+        "assumed_unit_cost": environment.unit_cost,
     }
 
 
@@ -155,7 +166,14 @@ def evaluate_model(request: EvaluationRequest):
     return {
         "episodes": episodes,
         "seed": seed,
-        "note": "Evaluasi pada lingkungan sintetis. Ketiga kebijakan memakai seed episode yang sama; hasil bukan bukti performa pada transaksi nyata. Biaya diskon dihitung hanya untuk transaksi berhasil dan bukan biaya produk/operasional.",
+        "assumptions": {
+            "list_price_per_unit": environment.price,
+            "assumed_unit_cost": environment.unit_cost,
+            "discount_rate": 0.10,
+            "reward_objective": "gross_profit = transaction_price - assumed_unit_cost",
+            "warning": "HPP Rp60.000 adalah asumsi demo, bukan data produk nyata. Laba kotor belum mengurangi biaya operasional, pajak, platform, atau biaya lain."
+        },
+        "note": "Evaluasi pada lingkungan sintetis. Ketiga kebijakan memakai seed episode yang sama. Hasil bukan bukti performa transaksi nyata. Reward mengoptimalkan laba kotor dengan asumsi HPP Rp60.000 per unit.",
         "trained_agent": summary(trained),
         "random_baseline": summary(random_policy),
         "fixed_baseline": summary(fixed),
@@ -163,6 +181,7 @@ def evaluate_model(request: EvaluationRequest):
             "average_reward_difference": round(reward_delta, 2),
             "average_reward_percent": reward_pct,
             "average_revenue_difference": round(trained["average_revenue"] - random_policy["average_revenue"], 2),
+            "average_gross_profit_difference": round(trained["average_gross_profit"] - random_policy["average_gross_profit"], 2),
             "average_sales_difference": round(trained["average_sales"] - random_policy["average_sales"], 2),
             "average_discount_difference": round(trained["average_discounts"] - random_policy["average_discounts"], 2),
             "average_realized_discount_cost_difference": round(trained["average_realized_discount_cost"] - random_policy["average_realized_discount_cost"], 2),
@@ -171,6 +190,7 @@ def evaluate_model(request: EvaluationRequest):
         "comparison_vs_fixed": {
             "average_reward_difference": round(trained["average_reward"] - fixed["average_reward"], 2),
             "average_revenue_difference": round(trained["average_revenue"] - fixed["average_revenue"], 2),
+            "average_gross_profit_difference": round(trained["average_gross_profit"] - fixed["average_gross_profit"], 2),
             "average_realized_discount_cost_difference": round(trained["average_realized_discount_cost"] - fixed["average_realized_discount_cost"], 2),
             "reward_better_than_fixed": trained["average_reward"] > fixed["average_reward"],
         },
@@ -184,7 +204,9 @@ def start_session():
     session_active = True
     return {"message": "Sesi simulasi dimulai", "state": environment.get_state(),
             "stats": {"stock": environment.stock, "traffic": environment.traffic,
-                      "revenue": environment.revenue, "sales": environment.sales}}
+                      "revenue": environment.revenue, "sales": environment.sales,
+                      "gross_profit": environment.gross_profit,
+                      "assumed_unit_cost": environment.unit_cost}}
 
 
 @app.post("/session/step")
@@ -210,6 +232,8 @@ def session_state():
     return {"active": session_active, "state": environment.get_state(),
             "stats": {"stock": environment.stock, "traffic": environment.traffic,
                       "interested": environment.interested, "revenue": environment.revenue,
+                      "gross_profit": environment.gross_profit,
+                      "assumed_unit_cost": environment.unit_cost,
                       "sales": environment.sales, "discount_count": environment.discount_count,
                       "turn": environment.turn}}
 
