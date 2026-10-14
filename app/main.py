@@ -248,6 +248,8 @@ def session_step(request: StepRequest | None = None):
                 "mode": "manual" if manual_action else "agent",
                 "reason": reason,
                 "audience_intent_before_action": result["info"].get("intent_before"),
+                "audience_message": result["info"].get("audience_message"),
+                "host_response": result["info"].get("host_response"),
                 "action_context_fit": result["info"].get("intent_fit")
             },
             "session": {"turn": environment.turn, "max_turns": environment.MAX_TURNS,
