@@ -34,7 +34,7 @@ class EvaluationRequest(BaseModel):
 
 def evaluate_policy(policy: str, episodes: int, seed: int):
     """Evaluate a policy on the same deterministic sequence of episode seeds."""
-    rewards, revenues, sales, turns = [], [], [], []
+    rewards, revenues, sales, turns, discounts = [], [], [], [], []
     for episode in range(episodes):
         episode_seed = seed + episode
         env = LiveCommerceEnvironment(seed=episode_seed)
@@ -57,6 +57,7 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         revenues.append(env.revenue)
         sales.append(env.sales)
         turns.append(env.turn)
+        discounts.append(env.discount_count)
 
     return {
         "policy": policy,
@@ -65,6 +66,8 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         "average_revenue": round(statistics.mean(revenues), 2),
         "average_sales": round(statistics.mean(sales), 2),
         "average_turns": round(statistics.mean(turns), 2),
+        "average_discounts": round(statistics.mean(discounts), 2),
+        "sell_through_rate": round(statistics.mean(sales) / 20 * 100, 2),
         "reward_stddev": round(statistics.pstdev(rewards), 2),
         "rewards": rewards,
     }
@@ -120,7 +123,13 @@ def evaluate_model(request: EvaluationRequest):
             "average_reward_percent": reward_pct,
             "average_revenue_difference": round(trained["average_revenue"] - random_policy["average_revenue"], 2),
             "average_sales_difference": round(trained["average_sales"] - random_policy["average_sales"], 2),
+            "average_discount_difference": round(trained["average_discounts"] - random_policy["average_discounts"], 2),
             "reward_better_than_random": trained["average_reward"] > random_policy["average_reward"],
+        },
+        "comparison_vs_fixed": {
+            "average_reward_difference": round(trained["average_reward"] - fixed["average_reward"], 2),
+            "average_revenue_difference": round(trained["average_revenue"] - fixed["average_revenue"], 2),
+            "reward_better_than_fixed": trained["average_reward"] > fixed["average_reward"],
         },
     }
 
