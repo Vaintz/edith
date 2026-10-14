@@ -11,7 +11,7 @@ from app.environment import LiveCommerceEnvironment
 
 app = FastAPI(title="Edith-sama — Live Commerce AI Agent",
               description="Local live-commerce simulation using tabular Q-Learning.",
-              version="0.3.0")
+              version="0.3.1")
 agent = QLearningAgent()
 agent.load()
 environment = LiveCommerceEnvironment()
@@ -47,7 +47,6 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         while True:
             state_key = env.state_key()
             if policy == "trained":
-                # Deterministic tie-breaking keeps policy evaluation reproducible.
                 values = agent.q_table.get(state_key)
                 if values:
                     best_value = max(values.values())
@@ -59,6 +58,7 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
             else:
                 action = "JELASKAN_PRODUK"
 
+            previous_revenue = env.revenue
             result = env.step(action)
             total_reward += result["reward"]
             info = result["info"]
@@ -66,7 +66,7 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
             metrics["selections"] += 1
             if info["sold"]:
                 metrics["sales"] += 1
-                metrics["revenue"] += int(info["revenue"]) - int(info["revenue"] - int(env.price * (1 - info["discount"]))) if False else int(env.price * (1 - info["discount"]))
+                metrics["revenue"] += env.revenue - previous_revenue
             if info["discount"]:
                 metrics["discounts"] += 1
             if result["done"]:
