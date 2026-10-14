@@ -6,10 +6,14 @@ class LiveCommerceEnvironment:
 
     ACTIONS = ["JELASKAN_PRODUK", "BERI_DISKON", "INTERAKSI_SANTAI"]
     MAX_TURNS = 30
+    DEFAULT_UNIT_COST = 60_000  # Assumption sementara; sesuaikan saat produk ditentukan.
 
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, unit_cost=DEFAULT_UNIT_COST):
+        if not isinstance(unit_cost, int) or unit_cost < 0:
+            raise ValueError("unit_cost harus berupa integer >= 0")
         self.rng = random.Random(seed)
         self.price = 100_000
+        self.unit_cost = unit_cost
         self.reset()
 
     def reset(self):
@@ -17,6 +21,7 @@ class LiveCommerceEnvironment:
         self.traffic = self.rng.randint(3, 12)
         self.interested = self.rng.random() < 0.5
         self.revenue = self.sales = self.discount_count = self.turn = 0
+        self.gross_profit = 0
         return self.get_state()
 
     def get_state(self):
@@ -64,15 +69,18 @@ class LiveCommerceEnvironment:
         probability += {"JELASKAN_PRODUK": 0.10, "BERI_DISKON": 0.25, "INTERAKSI_SANTAI": 0.05}[action]
         probability = min(probability, 0.95)
 
+        transaction_price = 0
+        transaction_profit = 0
         if self.stock > 0 and self.rng.random() < probability:
             self.stock -= 1
             self.sales += 1
             sold = True
             transaction_price = int(self.price * (1 - discount))
+            transaction_profit = transaction_price - self.unit_cost
             self.revenue += transaction_price
-            # Reward hanya merepresentasikan pendapatan simulasi setelah diskon.
-            # Rp10.000 pendapatan = 1 poin; interaksi tanpa transaksi tidak diberi bonus.
-            reward += transaction_price / 10_000
+            self.gross_profit += transaction_profit
+            # Reward kini merepresentasikan laba kotor, bukan omzet.
+            reward += transaction_profit / 10_000
             messages.append(f"Pembelian berhasil: Rp{transaction_price:,}.")
         else:
             messages.append("Belum ada pembelian.")
@@ -95,6 +103,9 @@ class LiveCommerceEnvironment:
                 "interested": self.interested, "revenue": self.revenue,
                 "sales": self.sales, "discount_count": self.discount_count,
                 "purchase_probability": round(probability, 3),
+                "transaction_price": transaction_price,
+                "transaction_profit": transaction_profit,
+                "gross_profit": self.gross_profit,
+                "unit_cost": self.unit_cost,
             },
         }
-    
