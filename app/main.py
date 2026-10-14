@@ -236,7 +236,7 @@ def session_step(request: StepRequest | None = None):
         "INTERAKSI_SANTAI": "membangun engagement",
     }
     chosen_action = action
-    intent = environment.intent
+    intent = result["info"].get("intent_before", environment.intent)
     reason = (
         f"State menunjukkan {intent_labels.get(intent, intent)}; "
         f"aksi {action_labels.get(chosen_action, chosen_action)}."
