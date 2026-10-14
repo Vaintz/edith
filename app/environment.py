@@ -5,6 +5,7 @@ class LiveCommerceEnvironment:
     """Synthetic live-commerce environment for reinforcement learning."""
 
     ACTIONS = ["JELASKAN_PRODUK", "BERI_DISKON", "INTERAKSI_SANTAI"]
+    MAX_TURNS = 30
 
     def __init__(self, seed=None):
         self.rng = random.Random(seed)
@@ -33,7 +34,7 @@ class LiveCommerceEnvironment:
     def step(self, action):
         if action not in self.ACTIONS:
             raise ValueError(f"Aksi tidak dikenal: {action}")
-        if self.stock <= 0 or self.turn >= 100:
+        if self.stock <= 0 or self.turn >= self.MAX_TURNS:
             raise RuntimeError("Sesi selesai. Mulai sesi baru dengan reset().")
 
         old_traffic, old_interest, old_stock = self.traffic, self.interested, self.stock
