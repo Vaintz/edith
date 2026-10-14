@@ -43,7 +43,14 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         while True:
             state_key = env.state_key()
             if policy == "trained":
-                action = agent.choose_action(state_key, training=False)
+                # Evaluation must be reproducible: do not use the agent's random
+                # tie-breaker or mutate its Q-table for unseen states.
+                values = agent.q_table.get(state_key)
+                if values:
+                    best_value = max(values.values())
+                    action = next(a for a in env.ACTIONS if values.get(a, 0.0) == best_value)
+                else:
+                    action = env.ACTIONS[0]
             elif policy == "random":
                 action = rng.choice(env.ACTIONS)
             else:
