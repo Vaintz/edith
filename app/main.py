@@ -156,7 +156,7 @@ def session_step(request: StepRequest | None = None):
     global session_active
     if not session_active:
         raise HTTPException(status_code=400, detail="Mulai sesi terlebih dahulu.")
-    if environment.stock <= 0 or environment.turn >= 100:
+    if environment.stock <= 0 or environment.turn >= environment.MAX_TURNS:
         raise HTTPException(status_code=400, detail="Sesi selesai. Mulai sesi baru.")
     manual_action = request.action if request else None
     if manual_action is not None and manual_action not in environment.ACTIONS:
@@ -165,7 +165,7 @@ def session_step(request: StepRequest | None = None):
     result = environment.step(action)
     if result["done"]:
         session_active = False
-    return {**result, "session": {"turn": environment.turn, "max_turns": 100,
+    return {**result, "session": {"turn": environment.turn, "max_turns": environment.MAX_TURNS,
                                   "finished": result["done"]}}
 
 
