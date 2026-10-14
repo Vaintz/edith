@@ -220,10 +220,14 @@ def session_step(request: StepRequest | None = None):
     manual_action = request.action if request else None
     if manual_action is not None and manual_action not in environment.ACTIONS:
         raise HTTPException(status_code=400, detail="Aksi tidak valid.")
+    supplied_message = request.audience_message if request else None
+    if supplied_message and supplied_message.strip():
+        # Update context before policy selection so Q-learning sees the incoming chat intent.
+        environment.intent = environment.classify_message(supplied_message)["intent"]
     state_key = environment.state_key()
     q_values = agent.q_table.get(state_key, {a: 0.0 for a in environment.ACTIONS})
     action = manual_action or agent.choose_action(state_key, training=False)
-    result = environment.step(action, audience_message=request.audience_message if request else None)
+    result = environment.step(action, audience_message=supplied_message)
     if result["done"]:
         session_active = False
     intent_labels = {
