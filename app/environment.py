@@ -8,6 +8,16 @@ class LiveCommerceEnvironment:
     MAX_TURNS = 30
     DEFAULT_UNIT_COST = 60_000  # Demo assumption, not a real product cost.
     INTENTS = ["TANYA_PRODUK", "SENSITIF_HARGA", "PASIF"]
+    INTENT_LABELS = {
+        "TANYA_PRODUK": "Butuh informasi",
+        "SENSITIF_HARGA": "Sensitif harga",
+        "PASIF": "Masih ragu / pasif",
+    }
+    MESSAGE_INTENT_RULES = {
+        "SENSITIF_HARGA": ("diskon", "promo", "murah", "harga", "budget", "mahal", "potongan", "ongkir", "hemat"),
+        "TANYA_PRODUK": ("bahan", "manfaat", "keunggulan", "detail", "ukuran", "cara pakai", "fungsi", "produk", "kualitas", "bedanya"),
+        "PASIF": ("ragu", "belum yakin", "lihat-lihat", "bingung", "nanti dulu", "masih mikir", "takut", "hmm"),
+    }
 
     def __init__(self, seed=None, unit_cost=DEFAULT_UNIT_COST):
         if not isinstance(unit_cost, int) or unit_cost < 0:
@@ -39,7 +49,27 @@ class LiveCommerceEnvironment:
         state = self.get_state()
         return f"{state['stock_level']}_{state['traffic_level']}_{state['sentiment_level']}_{state['audience_intent']}"
 
-    def step(self, action):
+    @classmethod
+    def classify_message(cls, message):
+        """Classify simple Indonesian chat text with transparent keyword rules."""
+        text = " ".join(str(message or "").lower().strip().split())
+        if not text:
+            return {"intent": "PASIF", "label": cls.INTENT_LABELS["PASIF"], "confidence": 0.0}
+        scores = {
+            intent: sum(1 for keyword in keywords if keyword in text)
+            for intent, keywords in cls.MESSAGE_INTENT_RULES.items()
+        }
+        best_score = max(scores.values())
+        if best_score == 0:
+            intent = "PASIF"
+            confidence = 0.25
+        else:
+            winners = [key for key, value in scores.items() if value == best_score]
+            intent = winners[0] if len(winners) == 1 else "PASIF"
+            confidence = round(best_score / max(1, sum(scores.values())), 2)
+        return {"intent": intent, "label": cls.INTENT_LABELS[intent], "confidence": confidence}
+
+    def step(self, action, audience_message=None):
         if action not in self.ACTIONS:
             raise ValueError(f"Aksi tidak dikenal: {action}")
         if self.stock <= 0 or self.turn >= self.MAX_TURNS:
@@ -66,7 +96,10 @@ class LiveCommerceEnvironment:
                 "Hmm, masih belum yakin.",
             ],
         }
-        incoming_message = self.rng.choice(audience_messages[old_intent])
+        incoming_message = str(audience_message).strip() if audience_message and str(audience_message).strip() else self.rng.choice(audience_messages[old_intent])
+        classification = self.classify_message(incoming_message)
+        old_intent = classification["intent"]
+        self.intent = old_intent
         messages, sold = [], False
         host_response = ""
         discount = 0.10 if action == "BERI_DISKON" else 0.0
@@ -161,6 +194,7 @@ class LiveCommerceEnvironment:
             "info": {
                 "action": action, "messages": messages, "sold": sold,
                 "audience_message": incoming_message, "host_response": host_response,
+                "message_classification": classification,
                 "discount": discount, "stock_before": old_stock, "stock": self.stock,
                 "traffic_before": old_traffic, "traffic": self.traffic,
                 "interested_before": old_interest, "interested": self.interested,
