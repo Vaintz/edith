@@ -225,10 +225,30 @@ def session_step(request: StepRequest | None = None):
     result = environment.step(action)
     if result["done"]:
         session_active = False
+    intent_labels = {
+        "TANYA_PRODUK": "penonton membutuhkan informasi produk",
+        "SENSITIF_HARGA": "penonton sensitif terhadap harga",
+        "PASIF": "penonton perlu dibangun engagement-nya",
+    }
+    action_labels = {
+        "JELASKAN_PRODUK": "menjawab kebutuhan informasi",
+        "BERI_DISKON": "menanggapi sensitivitas harga",
+        "INTERAKSI_SANTAI": "membangun engagement",
+    }
+    chosen_action = action
+    intent = environment.intent
+    reason = (
+        f"State menunjukkan {intent_labels.get(intent, intent)}; "
+        f"aksi {action_labels.get(chosen_action, chosen_action)}."
+    )
+    if manual_action:
+        reason = "Aksi dipilih operator. " + reason
     return {**result, "decision": {
                 "state_key": state_key, "q_values": q_values,
                 "mode": "manual" if manual_action else "agent",
-                "reason": "Aksi dipilih operator." if manual_action else "Aksi dengan nilai Q tertinggi pada state saat ini."
+                "reason": reason,
+                "audience_intent_before_action": result["info"].get("intent_before"),
+                "action_context_fit": result["info"].get("intent_fit")
             },
             "session": {"turn": environment.turn, "max_turns": environment.MAX_TURNS,
                         "finished": result["done"]}}
