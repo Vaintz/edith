@@ -11,7 +11,7 @@ from app.environment import LiveCommerceEnvironment
 
 app = FastAPI(title="Edith-sama — Live Commerce AI Agent",
               description="Local live-commerce simulation using tabular Q-Learning.",
-              version="0.4.0")
+              version="0.5.0")
 agent = QLearningAgent()
 agent.load()
 environment = LiveCommerceEnvironment()
@@ -219,12 +219,19 @@ def session_step(request: StepRequest | None = None):
     manual_action = request.action if request else None
     if manual_action is not None and manual_action not in environment.ACTIONS:
         raise HTTPException(status_code=400, detail="Aksi tidak valid.")
-    action = manual_action or agent.choose_action(environment.state_key(), training=False)
+    state_key = environment.state_key()
+    q_values = agent.q_table.get(state_key, {a: 0.0 for a in environment.ACTIONS})
+    action = manual_action or agent.choose_action(state_key, training=False)
     result = environment.step(action)
     if result["done"]:
         session_active = False
-    return {**result, "session": {"turn": environment.turn, "max_turns": environment.MAX_TURNS,
-                                  "finished": result["done"]}}
+    return {**result, "decision": {
+                "state_key": state_key, "q_values": q_values,
+                "mode": "manual" if manual_action else "agent",
+                "reason": "Aksi dipilih operator." if manual_action else "Aksi dengan nilai Q tertinggi pada state saat ini."
+            },
+            "session": {"turn": environment.turn, "max_turns": environment.MAX_TURNS,
+                        "finished": result["done"]}}
 
 
 @app.get("/session/state")
