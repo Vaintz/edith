@@ -82,7 +82,7 @@ class LiveCommerceEnvironment:
         if self.traffic == 0:
             messages.append("Penonton sedang sepi.")
         self.turn += 1
-        done = self.stock == 0 or self.turn >= 100
+        done = self.stock == 0 or self.turn >= self.MAX_TURNS
         return {
             "state": self.get_state(),
             "reward": reward,
@@ -97,3 +97,4 @@ class LiveCommerceEnvironment:
                 "purchase_probability": round(probability, 3),
             },
         }
+    
