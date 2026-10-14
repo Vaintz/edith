@@ -44,19 +44,16 @@ class LiveCommerceEnvironment:
             messages.append("Host menjelaskan manfaat dan keunggulan produk.")
             if self.rng.random() < 0.55:
                 self.interested = True
-                reward += 0.5
         elif action == "BERI_DISKON":
             self.discount_count += 1
             messages.append("Host menawarkan diskon 10% kepada penonton.")
             if self.rng.random() < 0.70:
                 self.interested = True
-                reward += 0.5
         else:
             messages.append("Host menyapa penonton dan berinteraksi santai.")
             if self.rng.random() < 0.60:
                 self.traffic += 2
                 self.interested = True
-                reward += 0.5
 
         probability = 0.05
         if self.interested:
@@ -72,8 +69,8 @@ class LiveCommerceEnvironment:
             sold = True
             transaction_price = int(self.price * (1 - discount))
             self.revenue += transaction_price
-            # Reward utama mengikuti pendapatan simulasi: Rp10.000 = 1 poin.
-            # Diskon otomatis menghasilkan reward transaksi lebih rendah.
+            # Reward hanya merepresentasikan pendapatan simulasi setelah diskon.
+            # Rp10.000 pendapatan = 1 poin; interaksi tanpa transaksi tidak diberi bonus.
             reward += transaction_price / 10_000
             messages.append(f"Pembelian berhasil: Rp{transaction_price:,}.")
         else:
@@ -82,7 +79,6 @@ class LiveCommerceEnvironment:
         if self.rng.random() < 0.25:
             self.traffic = max(0, self.traffic + self.rng.choice([-3, -1, 1, 3]))
         if self.traffic == 0:
-            reward -= 1
             messages.append("Penonton sedang sepi.")
         self.turn += 1
         done = self.stock == 0 or self.turn >= 100
