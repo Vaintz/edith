@@ -243,8 +243,10 @@ def session_step(request: StepRequest | None = None):
     chosen_action = action
     intent = result["info"].get("intent_before", environment.intent)
     reason = (
-        f"State menunjukkan {intent_labels.get(intent, intent)}; "
-        f"aksi {action_labels.get(chosen_action, chosen_action)}."
+        f"Chat menunjukkan {intent_labels.get(intent, intent)}; "
+        f"aksi dipilih untuk {action_labels.get(chosen_action, chosen_action)}. "
+        f"Bonus kecocokan konteks {result['info'].get('context_bonus', 0):+.2f}; "
+        f"penalti diskon tidak relevan {result['info'].get('action_cost', 0):.2f}."
     )
     if manual_action:
         reason = "Aksi dipilih operator. " + reason
