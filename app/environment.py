@@ -46,12 +46,39 @@ class LiveCommerceEnvironment:
             raise RuntimeError("Sesi selesai. Mulai sesi baru dengan reset().")
 
         old_traffic, old_interest, old_stock, old_intent = self.traffic, self.interested, self.stock, self.intent
+        audience_messages = {
+            "TANYA_PRODUK": [
+                "Apa keunggulan produk ini?",
+                "Bahannya apa dan apa manfaat utamanya?",
+                "Boleh jelaskan kenapa produk ini layak dibeli?",
+                "Aku ingin tahu detail produknya dulu.",
+            ],
+            "SENSITIF_HARGA": [
+                "Ada diskon atau promo?",
+                "Harganya bisa lebih murah?",
+                "Budget-ku terbatas, ada penawaran?",
+                "Kalau beli sekarang dapat harga spesial?",
+            ],
+            "PASIF": [
+                "Aku masih ragu untuk beli.",
+                "Ada yang bisa jelaskan lebih lanjut?",
+                "Aku cuma lihat-lihat dulu.",
+                "Hmm, masih belum yakin.",
+            ],
+        }
+        incoming_message = self.rng.choice(audience_messages[old_intent])
         messages, sold = [], False
+        host_response = ""
         discount = 0.10 if action == "BERI_DISKON" else 0.0
         intent_fit = 0.0
 
         if action == "JELASKAN_PRODUK":
-            messages.append("Host menjelaskan manfaat dan menjawab kebutuhan produk.")
+            host_response = (
+                "Keunggulan dan manfaat produk dijelaskan untuk menjawab pertanyaan penonton."
+                if old_intent == "TANYA_PRODUK" else
+                "Host menjelaskan manfaat produk agar penonton punya informasi tambahan."
+            )
+            messages.append(host_response)
             intent_fit = 0.18 if self.intent == "TANYA_PRODUK" else 0.04
             if self.rng.random() < (0.72 if self.intent == "TANYA_PRODUK" else 0.30):
                 self.interested = True
@@ -59,14 +86,24 @@ class LiveCommerceEnvironment:
                     self.intent = "PASIF" if self.rng.random() < 0.35 else "TANYA_PRODUK"
         elif action == "BERI_DISKON":
             self.discount_count += 1
-            messages.append("Host menawarkan diskon 10%.")
+            host_response = (
+                "Ada promo simulasi 10% untuk membantu pertimbangan harga."
+                if old_intent == "SENSITIF_HARGA" else
+                "Host menawarkan promo simulasi 10%, meski penonton belum menyatakan keberatan harga."
+            )
+            messages.append(host_response)
             intent_fit = 0.20 if self.intent == "SENSITIF_HARGA" else -0.04
             if self.rng.random() < (0.72 if old_intent == "SENSITIF_HARGA" else 0.28):
                 self.interested = True
                 if old_intent == "SENSITIF_HARGA":
                     self.intent = "PASIF" if self.rng.random() < 0.55 else "SENSITIF_HARGA"
         else:
-            messages.append("Host menyapa penonton dan membangun interaksi.")
+            host_response = (
+                "Host menyapa dengan santai dan mengajak penonton bertanya tanpa memaksa membeli."
+                if old_intent == "PASIF" else
+                "Host menyapa penonton dan membuka ruang untuk bertanya."
+            )
+            messages.append(host_response)
             intent_fit = 0.17 if self.intent == "PASIF" else 0.03
             if self.rng.random() < (0.68 if self.intent == "PASIF" else 0.35):
                 self.traffic += 2
@@ -123,6 +160,7 @@ class LiveCommerceEnvironment:
             "done": done,
             "info": {
                 "action": action, "messages": messages, "sold": sold,
+                "audience_message": incoming_message, "host_response": host_response,
                 "discount": discount, "stock_before": old_stock, "stock": self.stock,
                 "traffic_before": old_traffic, "traffic": self.traffic,
                 "interested_before": old_interest, "interested": self.interested,
