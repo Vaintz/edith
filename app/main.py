@@ -25,6 +25,7 @@ class TrainRequest(BaseModel):
 
 class StepRequest(BaseModel):
     action: str | None = None
+    audience_message: str | None = Field(default=None, max_length=500)
 
 
 class EvaluationRequest(BaseModel):
@@ -222,7 +223,7 @@ def session_step(request: StepRequest | None = None):
     state_key = environment.state_key()
     q_values = agent.q_table.get(state_key, {a: 0.0 for a in environment.ACTIONS})
     action = manual_action or agent.choose_action(state_key, training=False)
-    result = environment.step(action)
+    result = environment.step(action, audience_message=request.audience_message if request else None)
     if result["done"]:
         session_active = False
     intent_labels = {
@@ -250,6 +251,7 @@ def session_step(request: StepRequest | None = None):
                 "audience_intent_before_action": result["info"].get("intent_before"),
                 "audience_message": result["info"].get("audience_message"),
                 "host_response": result["info"].get("host_response"),
+                "message_classification": result["info"].get("message_classification"),
                 "action_context_fit": result["info"].get("intent_fit")
             },
             "session": {"turn": environment.turn, "max_turns": environment.MAX_TURNS,
@@ -265,6 +267,17 @@ def session_state():
                       "assumed_unit_cost": environment.unit_cost,
                       "sales": environment.sales, "discount_count": environment.discount_count,
                       "turn": environment.turn}}
+
+
+
+
+@app.post("/chat/classify")
+def classify_chat(request: StepRequest):
+    """Preview rule-based intent classification without advancing a session."""
+    if not request.audience_message or not request.audience_message.strip():
+        raise HTTPException(status_code=400, detail="Isi audience_message terlebih dahulu.")
+    return {"message": request.audience_message,
+            "classification": environment.classify_message(request.audience_message)}
 
 
 @app.get("/model")
