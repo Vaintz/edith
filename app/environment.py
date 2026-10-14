@@ -34,6 +34,8 @@ class LiveCommerceEnvironment:
         self.intent = self.rng.choice(self.INTENTS)
         self.revenue = self.sales = self.discount_count = self.turn = 0
         self.gross_profit = 0
+        self.last_action = None
+        self.last_intent_fit = 0.0
         return self.get_state()
 
     def get_state(self):
@@ -160,9 +162,13 @@ class LiveCommerceEnvironment:
             probability -= 0.03  # Scarcity is not a free conversion boost; fewer units remain.
         probability = max(0.01, min(probability, 0.90))
 
+        # Penalize unnecessary discounting and reward matching the audience's need.
+        # Profit is the primary objective; context fit is a small shaping signal.
+        action_cost = 0.8 if action == "BERI_DISKON" and old_intent != "SENSITIF_HARGA" else 0.0
+        context_bonus = max(-0.5, min(0.5, intent_fit * 2.0))
         transaction_price = 0
         transaction_profit = 0
-        reward = 0.0
+        reward = -action_cost + context_bonus
         if self.stock > 0 and self.rng.random() < probability:
             self.stock -= 1
             self.sales += 1
@@ -171,7 +177,7 @@ class LiveCommerceEnvironment:
             transaction_profit = transaction_price - self.unit_cost
             self.revenue += transaction_price
             self.gross_profit += transaction_profit
-            reward = transaction_profit / 10_000
+            reward += transaction_profit / 10_000
             messages.append(f"Pembelian berhasil: Rp{transaction_price:,}.")
         else:
             messages.append("Belum ada pembelian pada giliran ini.")
@@ -206,5 +212,7 @@ class LiveCommerceEnvironment:
                 "transaction_profit": transaction_profit,
                 "gross_profit": self.gross_profit, "unit_cost": self.unit_cost,
                 "intent_fit": round(intent_fit, 2),
+                "action_cost": round(action_cost, 2),
+                "context_bonus": round(context_bonus, 2),
             },
         }
