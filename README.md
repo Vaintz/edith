@@ -7,7 +7,7 @@ Local prototype of a simulated live-commerce host that learns to choose sales st
 - Python simulator for inventory, viewer traffic, audience interest, purchases, sales, and revenue.
 - Tabular Q-Learning with epsilon-greedy exploration.
 - JSON persistence for the learned Q-table.
-- FastAPI endpoints for training and running simulation sessions.
+- FastAPI endpoints for training, running simulation sessions, and evaluating the learned policy against random and fixed baselines.
 - No GPU or external LLM API required.
 
 > This is a synthetic environment. Reward values and buyer behavior are assumptions for software experimentation, not evidence of real-world consumer behavior.
@@ -58,17 +58,25 @@ You can pass an explicit action to `POST /session/step`:
 - `BERI_DISKON`
 - `INTERAKSI_SANTAI`
 
+## Reward and evaluation
+
+- The learning reward is tied directly to simulated revenue after discounts: Rp10,000 revenue equals 1 reward point.
+- Audience interaction can change the simulated audience state, but it does not earn reward unless a sale occurs.
+- POST `/evaluate` compares the trained policy with random and fixed policies over seeded synthetic episodes. Results are simulation evidence only, not proof of real-world performance.
+- Retraining starts a fresh Q-table because the reward definition changed; it does not mix old values with the new reward scale.
+
 ## API endpoints
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/` | Service information |
 | GET | `/health` | Health check |
-| POST | `/train` | Train and save the Q-learning agent |
+| POST | `/train` | Train and save the Q-learning agent from a fresh Q-table |
 | POST | `/session/start` | Start a fresh simulation session |
 | POST | `/session/step` | Execute one agent or manually selected action |
 | GET | `/session/state` | Current session state and metrics |
 | GET | `/model` | Model metadata |
+| POST | `/evaluate` | Compare trained, random, and fixed policies |
 
 ## Project structure
 
