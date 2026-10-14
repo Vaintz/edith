@@ -11,7 +11,7 @@ from app.environment import LiveCommerceEnvironment
 
 app = FastAPI(title="Edith-sama — Live Commerce AI Agent",
               description="Local live-commerce simulation using tabular Q-Learning.",
-              version="0.3.1")
+              version="0.3.2")
 agent = QLearningAgent()
 agent.load()
 environment = LiveCommerceEnvironment()
@@ -35,8 +35,10 @@ class EvaluationRequest(BaseModel):
 def evaluate_policy(policy: str, episodes: int, seed: int):
     """Evaluate a policy and collect outcomes grouped by chosen action."""
     rewards, revenues, sales, turns, discounts = [], [], [], [], []
+    discount_costs, full_price_values = [], []
     action_stats = {
-        action: {"selections": 0, "sales": 0, "revenue": 0, "discounts": 0}
+        action: {"selections": 0, "sales": 0, "revenue": 0,
+                 "discounts": 0, "realized_discount_cost": 0, "full_price_sales_value": 0}
         for action in LiveCommerceEnvironment.ACTIONS
     }
     for episode in range(episodes):
@@ -44,6 +46,8 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         env = LiveCommerceEnvironment(seed=episode_seed)
         rng = random.Random(episode_seed + 9_999_991)
         total_reward = 0
+        episode_discount_cost = 0
+        episode_full_price_value = 0
         while True:
             state_key = env.state_key()
             if policy == "trained":
@@ -65,8 +69,14 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
             metrics = action_stats[action]
             metrics["selections"] += 1
             if info["sold"]:
+                transaction_revenue = env.revenue - previous_revenue
+                discount_cost = env.price - transaction_revenue
                 metrics["sales"] += 1
-                metrics["revenue"] += env.revenue - previous_revenue
+                metrics["revenue"] += transaction_revenue
+                metrics["full_price_sales_value"] += env.price
+                metrics["realized_discount_cost"] += discount_cost
+                episode_full_price_value += env.price
+                episode_discount_cost += discount_cost
             if info["discount"]:
                 metrics["discounts"] += 1
             if result["done"]:
@@ -76,19 +86,27 @@ def evaluate_policy(policy: str, episodes: int, seed: int):
         sales.append(env.sales)
         turns.append(env.turn)
         discounts.append(env.discount_count)
+        discount_costs.append(episode_discount_cost)
+        full_price_values.append(episode_full_price_value)
 
     for metrics in action_stats.values():
         metrics["conversion_rate_percent"] = round(metrics["sales"] / metrics["selections"] * 100, 2) if metrics["selections"] else 0
         metrics["average_revenue_per_selection"] = round(metrics["revenue"] / metrics["selections"], 2) if metrics["selections"] else 0
 
+    average_revenue = statistics.mean(revenues)
+    average_discount_cost = statistics.mean(discount_costs)
+    average_full_price_value = statistics.mean(full_price_values)
     return {
         "policy": policy,
         "episodes": episodes,
         "average_reward": round(statistics.mean(rewards), 2),
-        "average_revenue": round(statistics.mean(revenues), 2),
+        "average_revenue": round(average_revenue, 2),
         "average_sales": round(statistics.mean(sales), 2),
         "average_turns": round(statistics.mean(turns), 2),
         "average_discounts": round(statistics.mean(discounts), 2),
+        "average_realized_discount_cost": round(average_discount_cost, 2),
+        "average_full_price_sales_value": round(average_full_price_value, 2),
+        "revenue_realization_percent": round(average_revenue / average_full_price_value * 100, 2) if average_full_price_value else 0,
         "sell_through_rate": round(statistics.mean(sales) / 20 * 100, 2),
         "reward_stddev": round(statistics.pstdev(rewards), 2),
         "action_stats": action_stats,
@@ -137,7 +155,7 @@ def evaluate_model(request: EvaluationRequest):
     return {
         "episodes": episodes,
         "seed": seed,
-        "note": "Evaluasi pada lingkungan sintetis. Ketiga kebijakan memakai seed episode yang sama; hasil bukan bukti performa pada transaksi nyata.",
+        "note": "Evaluasi pada lingkungan sintetis. Ketiga kebijakan memakai seed episode yang sama; hasil bukan bukti performa pada transaksi nyata. Biaya diskon dihitung hanya untuk transaksi berhasil dan bukan biaya produk/operasional.",
         "trained_agent": summary(trained),
         "random_baseline": summary(random_policy),
         "fixed_baseline": summary(fixed),
@@ -147,11 +165,13 @@ def evaluate_model(request: EvaluationRequest):
             "average_revenue_difference": round(trained["average_revenue"] - random_policy["average_revenue"], 2),
             "average_sales_difference": round(trained["average_sales"] - random_policy["average_sales"], 2),
             "average_discount_difference": round(trained["average_discounts"] - random_policy["average_discounts"], 2),
+            "average_realized_discount_cost_difference": round(trained["average_realized_discount_cost"] - random_policy["average_realized_discount_cost"], 2),
             "reward_better_than_random": trained["average_reward"] > random_policy["average_reward"],
         },
         "comparison_vs_fixed": {
             "average_reward_difference": round(trained["average_reward"] - fixed["average_reward"], 2),
             "average_revenue_difference": round(trained["average_revenue"] - fixed["average_revenue"], 2),
+            "average_realized_discount_cost_difference": round(trained["average_realized_discount_cost"] - fixed["average_realized_discount_cost"], 2),
             "reward_better_than_fixed": trained["average_reward"] > fixed["average_reward"],
         },
     }
