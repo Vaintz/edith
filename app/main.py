@@ -366,15 +366,30 @@ def chat_message(request: ChatRequest):
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="conversation_id harus berupa UUID yang valid.")
     history = _load_chat_history(conversation_id)
-    reply = generate_reply(message, history, {"mode": "chat mandiri", "simulation_active": False})
-    if not reply:
+    llm_reply = generate_reply(message, history, {
+        "mode": "chat mandiri",
+        "simulation_active": False,
+        "conversation_turn": (len(history) // 2) + 1,
+        "continuity": "Gunakan riwayat yang tersedia untuk menjaga kesinambungan, jangan menganggap detail yang tidak disebutkan sebagai fakta.",
+    })
+    if llm_reply:
+        reply = llm_reply
+        persona_mode = "llm"
+    else:
         reply = (
             "Hehe, Edith belum tersambung ke model bahasa sekarang. Coba pastikan Ollama berjalan "
             "dan model qwen2.5:3b sudah tersedia, lalu kirim pesanmu lagi, ya."
         )
+        persona_mode = "offline"
     _save_chat_turn(conversation_id, message, reply)
-    return {"message": message, "reply": reply, "persona_mode": "llm" if reply and "belum tersambung" not in reply else "offline",
-            "conversation_id": conversation_id, "history_turns": (len(history) // 2) + 1}
+    return {
+        "message": message,
+        "reply": reply,
+        "persona_mode": persona_mode,
+        "conversation_id": conversation_id,
+        "history_turns": (len(history) // 2) + 1,
+        "memory_messages": len(history),
+    }
 
 
 @app.post("/chat/classify")
