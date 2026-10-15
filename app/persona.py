@@ -6,20 +6,32 @@ from urllib.request import Request, urlopen
 
 
 def persona_status():
-    return {
-        "configured": bool(os.getenv("EDITH_LLM_API_KEY")),
-        "provider": os.getenv("EDITH_LLM_PROVIDER", "openai-compatible"),
-        "model": os.getenv("EDITH_LLM_MODEL", "gpt-4o-mini"),
-    }
-
+    provider = os.getenv("EDITH_LLM_PROVIDER", "ollama").strip().lower()
+    if provider == "api":
+        configured = bool(os.getenv("EDITH_LLM_API_KEY"))
+        model = os.getenv("EDITH_LLM_MODEL", "gpt-4o-mini")
+        base_url = os.getenv("EDITH_LLM_BASE_URL", "https://api.openai.com/v1")
+    else:
+        provider = "ollama"
+        configured = True
+        model = os.getenv("EDITH_LLM_MODEL", "qwen2.5:3b")
+        base_url = os.getenv("EDITH_LLM_BASE_URL", "http://127.0.0.1:11434/v1")
+    return {"configured": configured, "provider": provider, "model": model, "base_url": base_url}
 
 def generate_reply(message: str, history: list[dict] | None = None, context: dict | None = None):
     """Return a character reply, or None when no provider is configured/available."""
-    key = os.getenv("EDITH_LLM_API_KEY", "").strip()
-    if not key:
-        return None
-    base_url = os.getenv("EDITH_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-    model = os.getenv("EDITH_LLM_MODEL", "gpt-4o-mini")
+    provider = os.getenv("EDITH_LLM_PROVIDER", "ollama").strip().lower()
+    if provider == "api":
+        key = os.getenv("EDITH_LLM_API_KEY", "").strip()
+        if not key:
+            return None
+        base_url = os.getenv("EDITH_LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        model = os.getenv("EDITH_LLM_MODEL", "gpt-4o-mini")
+        headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+    else:
+        base_url = os.getenv("EDITH_LLM_BASE_URL", "http://127.0.0.1:11434/v1").rstrip("/")
+        model = os.getenv("EDITH_LLM_MODEL", "qwen2.5:3b")
+        headers = {"Content-Type": "application/json"}
     system_prompt = (
         "Kamu Edith-sama, host AI anime yang ceria, sedikit playful, hangat, spontan, "
         "dan berbicara bahasa Indonesia sehari-hari dengan sedikit ekspresi anime. "
@@ -47,7 +59,7 @@ def generate_reply(message: str, history: list[dict] | None = None, context: dic
     request = Request(
         base_url + "/chat/completions",
         data=payload,
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     try:
