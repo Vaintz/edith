@@ -1,6 +1,8 @@
 from pathlib import Path
 import random
 import statistics
+import sqlite3
+import uuid
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -31,6 +33,11 @@ class TrainRequest(BaseModel):
 class StepRequest(BaseModel):
     action: str | None = None
     audience_message: str | None = Field(default=None, max_length=500)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=500)
+    conversation_id: str = Field(min_length=1, max_length=64)
 
 
 class EvaluationRequest(BaseModel):
@@ -304,6 +311,70 @@ def session_state():
                       "turn": environment.turn}}
 
 
+
+
+def _memory_db_path():
+    configured = Path(__file__).resolve().parent.parent / "data"
+    configured.mkdir(parents=True, exist_ok=True)
+    return configured / "edith_memory.sqlite3"
+
+
+def _load_chat_history(conversation_id: str) -> list[dict[str, str]]:
+    with sqlite3.connect(_memory_db_path()) as connection:
+        connection.execute("""CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        rows = connection.execute(
+            "SELECT role, content FROM chat_messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 12",
+            (conversation_id,),
+        ).fetchall()
+    return [{"role": role, "content": content} for role, content in reversed(rows)]
+
+
+def _save_chat_turn(conversation_id: str, message: str, reply: str) -> None:
+    with sqlite3.connect(_memory_db_path()) as connection:
+        connection.execute("""CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        connection.executemany(
+            "INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, ?, ?)",
+            [(conversation_id, "user", message[:500]), (conversation_id, "assistant", reply[:900])],
+        )
+        connection.execute(
+            "DELETE FROM chat_messages WHERE conversation_id = ? AND id NOT IN "
+            "(SELECT id FROM chat_messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 40)",
+            (conversation_id, conversation_id),
+        )
+
+
+@app.post("/chat/message")
+def chat_message(request: ChatRequest):
+    """Chat with Edith without starting or advancing the commerce simulation."""
+    message = request.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Pesan tidak boleh kosong.")
+    try:
+        conversation_id = str(uuid.UUID(request.conversation_id))
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="conversation_id harus berupa UUID yang valid.")
+    history = _load_chat_history(conversation_id)
+    reply = generate_reply(message, history, {"mode": "chat mandiri", "simulation_active": False})
+    if not reply:
+        reply = (
+            "Hehe, Edith belum tersambung ke model bahasa sekarang. Coba pastikan Ollama berjalan "
+            "dan model qwen2.5:3b sudah tersedia, lalu kirim pesanmu lagi, ya."
+        )
+    _save_chat_turn(conversation_id, message, reply)
+    return {"message": message, "reply": reply, "persona_mode": "llm" if reply and "belum tersambung" not in reply else "offline",
+            "conversation_id": conversation_id, "history_turns": (len(history) // 2) + 1}
 
 
 @app.post("/chat/classify")
