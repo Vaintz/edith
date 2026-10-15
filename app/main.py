@@ -4,6 +4,7 @@ import statistics
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.agent import QLearningAgent
@@ -19,6 +20,8 @@ environment = LiveCommerceEnvironment()
 session_active = False
 persona_history: list[dict[str, str]] = []
 DASHBOARD_PATH = Path(__file__).parent / "static" / "index.html"
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 class TrainRequest(BaseModel):
