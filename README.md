@@ -59,22 +59,31 @@ You can pass an explicit action to `POST /session/step`:
 - `BERI_DISKON`
 - `INTERAKSI_SANTAI`
 
-## Optional conversational model
+## Free local conversational model (Ollama)
 
-By default, Edith uses the built-in rules/persona and does not need an API key. To enable more natural LLM-generated replies, configure an OpenAI-compatible chat-completions endpoint using environment variables. Keep the API key private; do not commit it to GitHub.
+Edith uses Ollama on the same computer by default. This avoids per-request API charges; the model runs locally, but downloading and running it uses disk space, RAM, and CPU/GPU resources.
 
-Windows PowerShell (current terminal only):
+1. Install Ollama for Windows from https://ollama.com/download.
+2. Open PowerShell and download a small model:
 
 ```powershell
-$env:EDITH_LLM_API_KEY = "your-api-key"
-$env:EDITH_LLM_BASE_URL = "https://api.openai.com/v1"
-$env:EDITH_LLM_MODEL = "gpt-4o-mini"
+ollama pull qwen2.5:3b
+```
+
+3. Ensure Ollama is running, then start Edith:
+
+```powershell
+git pull
+$env:EDITH_LLM_PROVIDER = "ollama"
+$env:EDITH_LLM_MODEL = "qwen2.5:3b"
 python -m uvicorn app.main:app --reload
 ```
 
-For a compatible provider, set `EDITH_LLM_BASE_URL` to its API base URL and `EDITH_LLM_MODEL` to a model available on that account. Restart the server after changing variables. Check `GET /persona/status` to see whether a key is configured. If the provider is unavailable or returns an error, Edith falls back to rules-based dialogue. Provider usage may incur charges.
+4. Open http://127.0.0.1:8000/persona/status. The provider should be `ollama`; then start a new session in the dashboard and send a chat message.
 
-The LLM only writes the character's reply. The existing Q-Learning agent still selects the simulation action; the LLM does not place real orders or connect to a live platform.
+If your computer has limited memory, a smaller model may run better. The first response can take longer while the model warms up. If Ollama is stopped or unavailable, Edith falls back to rules-based dialogue. No API key is needed for this local mode.
+
+To use a paid/hosted OpenAI-compatible provider instead, set `EDITH_LLM_PROVIDER = "api"`, then configure `EDITH_LLM_API_KEY`, `EDITH_LLM_BASE_URL`, and `EDITH_LLM_MODEL` in the same PowerShell session. Never commit API keys to GitHub.
 
 ## Reward and evaluation
 
