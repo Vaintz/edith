@@ -220,7 +220,7 @@ def start_session():
 
 @app.post("/session/step")
 def session_step(request: StepRequest | None = None):
-    global session_active
+    global session_active, persona_history
     if not session_active:
         raise HTTPException(status_code=400, detail="Mulai sesi terlebih dahulu.")
     if environment.stock <= 0 or environment.turn >= environment.MAX_TURNS:
