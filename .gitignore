@@ -5,3 +5,7 @@ models/*.json
 .env
 .vscode/
 .pytest_cache/
+
+# Persistent local conversation memory
+data/*.sqlite3
+data/*.sqlite3-*
