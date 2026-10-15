@@ -8,7 +8,9 @@ Local prototype of a simulated live-commerce host that learns to choose sales st
 - Tabular Q-Learning with epsilon-greedy exploration.
 - JSON persistence for the learned Q-table.
 - FastAPI endpoints for training, running simulation sessions, and evaluating the learned policy against random and fixed baselines.
-- Optional OpenAI-compatible chat model for natural Edith dialogue; rules-based replies remain available without an API key.
+- Optional OpenAI-compatible chat model for natural Edith dialogue (Ollama local by default).
+- Standalone chat that works without starting the commerce simulation.
+- SQLite conversation history persisted per browser conversation ID; the database is local and excluded from Git.
 - Browser-native text-to-speech (voice availability depends on the user's browser and operating system).
 
 > This is a synthetic environment. Reward values and buyer behavior are assumptions for software experimentation, not evidence of real-world consumer behavior.
@@ -79,7 +81,7 @@ $env:EDITH_LLM_MODEL = "qwen2.5:3b"
 python -m uvicorn app.main:app --reload
 ```
 
-4. Open http://127.0.0.1:8000/persona/status. The provider should be `ollama`; then start a new session in the dashboard and send a chat message.
+4. Open http://127.0.0.1:8000/persona/status. The provider should be `ollama`; then open the dashboard and send a chat message; standalone chat no longer requires starting a simulation.
 
 If your computer has limited memory, a smaller model may run better. The first response can take longer while the model warms up. If Ollama is stopped or unavailable, Edith falls back to rules-based dialogue. No API key is needed for this local mode.
 
@@ -99,6 +101,7 @@ To use a paid/hosted OpenAI-compatible provider instead, set `EDITH_LLM_PROVIDER
 | GET | `/` | Service information |
 | GET | `/health` | Health check |
 | GET | `/persona/status` | LLM configuration status (never returns the API key) |
+| POST | `/chat/message` | Chat mandiri dengan riwayat percakapan persisten, tanpa memajukan simulasi |
 | POST | `/train` | Train and save the Q-learning agent from a fresh Q-table |
 | POST | `/session/start` | Start a fresh simulation session |
 | POST | `/session/step` | Execute one agent or manually selected action |
