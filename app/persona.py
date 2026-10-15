@@ -41,7 +41,8 @@ def generate_reply(message: str, history: list[dict] | None = None, context: dic
         "pesanan masih simulasi jika relevan. Jangan mengaku sebagai manusia. Tetap karakter."
     )
     messages = [{"role": "system", "content": system_prompt}]
-    for item in (history or [])[-8:]:
+    # Keep the prompt small for low-memory, older laptop CPUs.
+    for item in (history or [])[-4:]:
         role = item.get("role")
         content = str(item.get("content", "")).strip()
         if role in {"user", "assistant"} and content:
@@ -54,7 +55,7 @@ def generate_reply(message: str, history: list[dict] | None = None, context: dic
         "model": model,
         "messages": messages,
         "temperature": 0.85,
-        "max_tokens": 180,
+        "max_tokens": 96,
     }).encode("utf-8")
     request = Request(
         base_url + "/chat/completions",
@@ -63,7 +64,7 @@ def generate_reply(message: str, history: list[dict] | None = None, context: dic
         method="POST",
     )
     try:
-        with urlopen(request, timeout=18) as response:
+        with urlopen(request, timeout=25) as response:
             data = json.loads(response.read().decode("utf-8"))
         text = data["choices"][0]["message"]["content"].strip()
         return text[:900] if text else None
