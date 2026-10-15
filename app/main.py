@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.agent import QLearningAgent
 from app.environment import LiveCommerceEnvironment
+from app.persona import generate_reply, persona_status
 
 app = FastAPI(title="Edith-sama — Live Commerce AI Agent",
               description="Local live-commerce simulation using tabular Q-Learning.",
@@ -16,6 +17,7 @@ agent = QLearningAgent()
 agent.load()
 environment = LiveCommerceEnvironment()
 session_active = False
+persona_history: list[dict[str, str]] = []
 DASHBOARD_PATH = Path(__file__).parent / "static" / "index.html"
 
 
@@ -132,6 +134,11 @@ def health():
     return {"status": "ok", "model_loaded": bool(agent.q_table), "session_active": session_active}
 
 
+@app.get("/persona/status")
+def persona_configuration():
+    return persona_status()
+
+
 @app.post("/train")
 def train_model(request: TrainRequest):
     history = agent.train(episodes=request.episodes)
@@ -200,8 +207,9 @@ def evaluate_model(request: EvaluationRequest):
 
 @app.post("/session/start")
 def start_session():
-    global session_active
+    global session_active, persona_history
     environment.reset()
+    persona_history = []
     session_active = True
     return {"message": "Sesi simulasi dimulai", "state": environment.get_state(),
             "stats": {"stock": environment.stock, "traffic": environment.traffic,
@@ -228,6 +236,22 @@ def session_step(request: StepRequest | None = None):
     q_values = agent.q_table.get(state_key, {a: 0.0 for a in environment.ACTIONS})
     action = manual_action or agent.choose_action(state_key, training=False)
     result = environment.step(action, audience_message=supplied_message)
+    llm_reply = None
+    if supplied_message and supplied_message.strip():
+        context = {
+            "turn": environment.turn,
+            "traffic": environment.traffic,
+            "stock": environment.stock,
+            "sales": environment.sales,
+            "last_action": action,
+            "simulated_sale": bool(result["info"].get("sold")),
+        }
+        llm_reply = generate_reply(supplied_message, persona_history, context)
+        persona_history.extend([
+            {"role": "user", "content": supplied_message.strip()},
+            {"role": "assistant", "content": llm_reply or result["info"].get("host_response", "")},
+        ])
+        persona_history = persona_history[-16:]
     if result["done"]:
         session_active = False
     intent_labels = {
@@ -257,6 +281,8 @@ def session_step(request: StepRequest | None = None):
                 "audience_intent_before_action": result["info"].get("intent_before"),
                 "audience_message": result["info"].get("audience_message"),
                 "host_response": result["info"].get("host_response"),
+                "llm_reply": llm_reply,
+                "persona_mode": "llm" if llm_reply else "rules",
                 "message_classification": result["info"].get("message_classification"),
                 "action_context_fit": result["info"].get("intent_fit")
             },
