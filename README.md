@@ -8,7 +8,8 @@ Local prototype of a simulated live-commerce host that learns to choose sales st
 - Tabular Q-Learning with epsilon-greedy exploration.
 - JSON persistence for the learned Q-table.
 - FastAPI endpoints for training, running simulation sessions, and evaluating the learned policy against random and fixed baselines.
-- No GPU or external LLM API required.
+- Optional OpenAI-compatible chat model for natural Edith dialogue; rules-based replies remain available without an API key.
+- Browser-native text-to-speech (voice availability depends on the user's browser and operating system).
 
 > This is a synthetic environment. Reward values and buyer behavior are assumptions for software experimentation, not evidence of real-world consumer behavior.
 
@@ -58,6 +59,23 @@ You can pass an explicit action to `POST /session/step`:
 - `BERI_DISKON`
 - `INTERAKSI_SANTAI`
 
+## Optional conversational model
+
+By default, Edith uses the built-in rules/persona and does not need an API key. To enable more natural LLM-generated replies, configure an OpenAI-compatible chat-completions endpoint using environment variables. Keep the API key private; do not commit it to GitHub.
+
+Windows PowerShell (current terminal only):
+
+```powershell
+$env:EDITH_LLM_API_KEY = "your-api-key"
+$env:EDITH_LLM_BASE_URL = "https://api.openai.com/v1"
+$env:EDITH_LLM_MODEL = "gpt-4o-mini"
+python -m uvicorn app.main:app --reload
+```
+
+For a compatible provider, set `EDITH_LLM_BASE_URL` to its API base URL and `EDITH_LLM_MODEL` to a model available on that account. Restart the server after changing variables. Check `GET /persona/status` to see whether a key is configured. If the provider is unavailable or returns an error, Edith falls back to rules-based dialogue. Provider usage may incur charges.
+
+The LLM only writes the character's reply. The existing Q-Learning agent still selects the simulation action; the LLM does not place real orders or connect to a live platform.
+
 ## Reward and evaluation
 
 - The learning reward is tied directly to simulated revenue after discounts: Rp10,000 revenue equals 1 reward point.
@@ -71,6 +89,7 @@ You can pass an explicit action to `POST /session/step`:
 |---|---|---|
 | GET | `/` | Service information |
 | GET | `/health` | Health check |
+| GET | `/persona/status` | LLM configuration status (never returns the API key) |
 | POST | `/train` | Train and save the Q-learning agent from a fresh Q-table |
 | POST | `/session/start` | Start a fresh simulation session |
 | POST | `/session/step` | Execute one agent or manually selected action |
